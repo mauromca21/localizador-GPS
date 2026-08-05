@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS PRO - Monitor en Vivo</title>
+    <!-- Leaflet.js para el Mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #121212; color: white; font-family: sans-serif; }
+
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            height: 75vh;
+            width: 100%;
+        }
+
+        .map-box {
+            flex: 1;
+            min-width: 300px;
+            height: 100%;
+        }
+
+        .camera-box {
+            flex: 1;
+            min-width: 300px;
+            height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-left: 2px solid #2A2A2A;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Rotación de 90 grados y escalado para llenar todo el recuadro */
+        .rotate-90 {
+            transform: rotate(90deg);
+            width: 75vh !important;
+            height: 50vw !important;
+            max-width: none !important;
+            max-height: none !important;
+            object-fit: cover !important;
+        }
+
+        .camera-title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #00FF66;
+            z-index: 10;
+        }
+
+        #map { height: 100%; width: 100%; }
+
+        .panel { padding: 15px; background: #1E1E1E; display: flex; justify-content: space-around; flex-wrap: wrap; }
+        .card { background: #2A2A2A; padding: 10px 20px; border-radius: 8px; margin: 5px; text-align: center; min-width: 120px; }
+        .card h4 { margin: 0; color: #888; font-size: 12px; }
+        .card p { margin: 5px 0 0; font-size: 18px; font-weight: bold; color: #007ACC; }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <!-- Contenedor del Mapa -->
+        <div class="map-box">
+            <div id="map"></div>
+        </div>
+
+        <!-- Contenedor de la Cámara en Vivo -->
+        <div class="camera-box">
+            <span class="camera-title">● EN DIRECTO</span>
+            <img id="videoStream" class="rotate-90" src="" alt="Cargando cámara..." onerror="this.src='https://via.placeholder.com/640x480?text=Cámara+no+disponible';">
+        </div>
+    </div>
+
+    <!-- Panel Telemetría -->
+    <div class="panel">
+        <div class="card"><h4>LATITUD</h4><p id="lat">-</p></div>
+        <div class="card"><h4>LONGITUD</h4><p id="lng">-</p></div>
+        <div class="card"><h4>VELOCIDAD</h4><p id="speed">- km/h</p></div>
+        <div class="card"><h4>ALTITUD</h4><p id="alt">- m</p></div>
+    </div>
+
+    <script>
+        // 1. Configuración de URLs
+        const CLOUDFLARE_URL = "https://houses-helena-tall-boats.trycloudflare.com";
+        const urlFirebase = "https://gpspro-54204-default-rtdb.firebaseio.com/location.json";
+
+        // 2. Asignar ruta de video para IP Webcam Pro (/video)
+        const imgStream = document.getElementById("videoStream");
+        imgStream.src = `${CLOUDFLARE_URL}/video`;
+
+        // 3. Inicializar Mapa Leaflet
+        const mapa = L.map('map').setView([3.4516, -76.5320], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(mapa);
+
+        let marcador = L.marker([3.4516, -76.5320]).addTo(mapa)
+            .bindPopup('<b>Dispositivo GPS PRO</b>')
+            .openPopup();
+
+        // 4. Actualización continua del GPS desde Firebase
+        async function actualizarMapa() {
+            try {
+                const response = await fetch(urlFirebase);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+
+                if (data && data.latitude && data.longitude) {
+                    const lat = parseFloat(data.latitude);
+                    const lng = parseFloat(data.longitude);
+                    const speed = data.speed ? parseFloat(data.speed).toFixed(1) : '0.0';
+                    const altitude = data.altitude ? parseFloat(data.altitude).toFixed(1) : '0.0';
+
+                    document.getElementById('lat').innerText = lat;
+                    document.getElementById('lng').innerText = lng;
+                    document.getElementById('speed').innerText = speed + ' km/h';
+                    document.getElementById('alt').innerText = altitude + ' m';
+
+                    const nuevaPos = [lat, lng];
+                    marcador.setLatLng(nuevaPos);
+                    mapa.panTo(nuevaPos);
+                }
+            } catch (error) {
+                console.error('Error al actualizar GPS:', error);
+            }
+        }
+
+        actualizarMapa();
+        setInterval(actualizarMapa, 2000);
+    </script>
+</body>
+</html>
