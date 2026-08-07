@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Total: GPS + Cámara</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  body{margin:0;background:#111;color:#fff;font-family:'Segoe UI',sans-serif}
+  h2{margin:8px;text-align:center;letter-spacing:2px;color:#00ff6a}
+  #superior{display:flex;height:80vh;gap:6px;padding:6px}   /* ✔ más alto */
+  #map{flex:2.2;border-radius:6px}                          /* ✔ mapa mucho más grande */
+  #camBox{width:30%;background:#000;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #video{max-width:100%;max-height:92%;object-fit:contain}
+  #tarjetas{display:flex;justify-content:space-around;padding:10px;background:#1b1b1b;flex-wrap:wrap;gap:8px}
+  .tarjeta{background:#242424;border-radius:8px;padding:12px 22px;text-align:center;min-width:140px}
+  .titulo{font-size:12px;color:#ccc;letter-spacing:1px}
+  .valor{font-size:18px;font-weight:bold;color:#2196f3;margin-top:4px}
+  .ok{color:#00ff6a;font-weight:bold} .sin{color:#ff4d4d;font-weight:bold}
+</style>
+</head>
+<body>
+<h2>● MONITOR EN VIVO: GPS + CÁMARA</h2>
+<div id="superior">
+  <div id="map"></div>
+  <div id="camBox">
+    <img id="video" alt="Sin señal de cámara">
+    <div id="estadoCam" class="sin">Esperando cámara...</div>
+  </div>
+</div>
+<div id="tarjetas">
+  <div class="tarjeta"><div class="titulo">LATITUD</div><div class="valor" id="txtLat">-</div></div>
+  <div class="tarjeta"><div class="titulo">LONGITUD</div><div class="valor" id="txtLng">-</div></div>
+  <div class="tarjeta"><div class="titulo">VELOCIDAD</div><div class="valor" id="txtVel">-</div></div>
+  <div class="tarjeta"><div class="titulo">ALTITUD</div><div class="valor" id="txtAlt">-</div></div>
+  <div class="tarjeta"><div class="titulo">ÚLTIMA SEÑAL</div><div class="valor" id="txtHora">-</div></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const BASE = "https://gpspro-54204-default-rtdb.firebaseio.com/";
+const $ = id => document.getElementById(id);
+
+const map = L.map('map').setView([3.4849,-76.5075],16);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+let marker=null, line=null, pts=[], lastTs=null;
+
+async function poll(){
+  try{ // GPS
+    const d = await (await fetch(BASE+"location.json",{cache:"no-store"})).json();
+    if(d && d.lat!=null){
+      const lat=+d.lat, lng=+d.lng;
+      if(!marker) marker=L.marker([lat,lng]).addTo(map).bindPopup("Dispositivo");
+      else marker.setLatLng([lat,lng]);
+      if(d.timestamp!==lastTs){ lastTs=d.timestamp; pts.push([lat,lng]);
+        if(!line) line=L.polyline(pts,{color:'#00ff6a',weight:3}).addTo(map); else line.setLatLngs(pts); }
+      map.setView([lat,lng],Math.max(map.getZoom(),17));
+      $('txtLat').textContent=lat.toFixed(6);
+      $('txtLng').textContent=lng.toFixed(6);
+      $('txtVel').textContent=((+(d.velocidad??0))*3.6).toFixed(1)+" km/h";
+      $('txtAlt').textContent=(+(d.altitud??0)).toFixed(0)+" m";
+      $('txtHora').textContent=new Date(+d.timestamp).toLocaleTimeString();
+    }
+  }catch(e){}
+  try{ // CÁMARA
+    const c = await (await fetch(BASE+"camera.json",{cache:"no-store"})).json();
+    if(c && c.img){
+      $('video').src="data:image/jpeg;base64,"+c.img;
+      $('estadoCam').textContent="Cámara: "+new Date(+c.ts).toLocaleTimeString();
+      $('estadoCam').className="ok";
+    }
+  }catch(e){}
+}
+poll();
+setInterval(poll, 1500); // ✔ refresco más rápido
+</script>
+</body>
+</html>
