@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Total: GPS + Cámara + Pantalla</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  html,body{height:100%}
+  body{margin:0;background:#111;color:#fff;font-family:'Segoe UI',sans-serif;display:flex;flex-direction:column}
+  h2{margin:6px;text-align:center;letter-spacing:2px;color:#00ff6a;font-size:20px}
+  #superior{flex:1;display:flex;gap:6px;padding:6px;min-height:0}
+  #map{flex:2.4;border-radius:8px}
+  #colDerecha{width:40%;display:flex;flex-direction:column;gap:6px}
+  #colDerecha .caja:nth-child(1){flex:1}
+  #colDerecha .caja:nth-child(2){flex:1.5}
+  .caja{background:#000;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;min-height:0}
+  .caja img{max-width:100%;max-height:90%;object-fit:contain}
+  #video{width:100%;height:90%;object-fit:cover}
+  #pantalla{width:100%;height:94%;object-fit:contain}
+  .caja div{padding:4px;font-size:14px}
+  #tarjetas{display:flex;justify-content:space-around;padding:8px;background:#1b1b1b;flex-wrap:wrap;gap:8px}
+  .tarjeta{background:#242424;border-radius:8px;padding:8px 18px;text-align:center;min-width:130px}
+  .titulo{font-size:11px;color:#ccc;letter-spacing:1px}
+  .valor{font-size:16px;font-weight:bold;color:#2196f3;margin-top:2px}
+  .ok{color:#00ff6a;font-weight:bold} .sin{color:#ff4d4d;font-weight:bold}
+</style>
+</head>
+<body>
+<h2>● MONITOR EN VIVO: GPS + CÁMARA + PANTALLA</h2>
+
+<div id="superior">
+  <div id="map"></div>
+  <div id="colDerecha">
+    <div class="caja">
+      <img id="video" alt="Sin señal de cámara">
+      <div id="estadoCam" class="sin">Esperando cámara...</div>
+    </div>
+    <div class="caja">
+      <img id="pantalla" alt="Sin señal de pantalla">
+      <div id="estadoPan" class="sin">Esperando pantalla...</div>
+    </div>
+  </div>
+</div>
+
+<div id="tarjetas">
+  <div class="tarjeta"><div class="titulo">LATITUD</div><div class="valor" id="txtLat">-</div></div>
+  <div class="tarjeta"><div class="titulo">LONGITUD</div><div class="valor" id="txtLng">-</div></div>
+  <div class="tarjeta"><div class="titulo">VELOCIDAD</div><div class="valor" id="txtVel">-</div></div>
+  <div class="tarjeta"><div class="titulo">ALTITUD</div><div class="valor" id="txtAlt">-</div></div>
+  <div class="tarjeta"><div class="titulo">ÚLTIMA SEÑAL</div><div class="valor" id="txtHora">-</div></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const BASE = "https://gpspro-54204-default-rtdb.firebaseio.com/";
+const $ = id => document.getElementById(id);
+
+const map = L.map('map').setView([3.4849,-76.5075],16);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+let marker=null, line=null, pts=[], lastTs=null;
+
+async function poll(){
+  try{
+    const d = await (await fetch(BASE+"location.json",{cache:"no-store"})).json();
+    if(d && d.lat!=null){
+      const lat=+d.lat, lng=+d.lng;
+      if(!marker) marker=L.marker([lat,lng]).addTo(map).bindPopup("Dispositivo");
+      else marker.setLatLng([lat,lng]);
+      if(d.timestamp!==lastTs){ lastTs=d.timestamp; pts.push([lat,lng]);
+        if(!line) line=L.polyline(pts,{color:'#00ff6a',weight:3}).addTo(map); else line.setLatLngs(pts); }
+      map.setView([lat,lng],Math.max(map.getZoom(),17));
+      $('txtLat').textContent=lat.toFixed(6);
+      $('txtLng').textContent=lng.toFixed(6);
+      $('txtVel').textContent=((+(d.velocidad??0))*3.6).toFixed(1)+" km/h";
+      $('txtAlt').textContent=(+(d.altitud??0)).toFixed(0)+" m";
+      $('txtHora').textContent=new Date(+d.timestamp).toLocaleTimeString();
+    }
+  }catch(e){}
+  try{
+    const c = await (await fetch(BASE+"camera.json",{cache:"no-store"})).json();
+    if(c && c.img){
+      $('video').src="data:image/jpeg;base64,"+c.img;
+      $('estadoCam').textContent="Cámara: "+new Date(+c.ts).toLocaleTimeString();
+      $('estadoCam').className="ok";
+    }
+  }catch(e){}
+  try{
+    const p = await (await fetch(BASE+"screen.json",{cache:"no-store"})).json();
+    if(p && p.img){
+      $('pantalla').src="data:image/jpeg;base64,"+p.img;
+      $('estadoPan').textContent="Pantalla: "+new Date(+p.ts).toLocaleTimeString();
+      $('estadoPan').className="ok";
+    }
+  }catch(e){}
+}
+poll();
+setInterval(poll, 700);
+</script>
+</body>
+</html>
