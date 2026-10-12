@@ -1,101 +1,403 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Monitor Total: GPS + Cámara + Pantalla</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-  html,body{height:100%}
-  body{margin:0;background:#111;color:#fff;font-family:'Segoe UI',sans-serif;display:flex;flex-direction:column}
-  h2{margin:6px;text-align:center;letter-spacing:2px;color:#00ff6a;font-size:20px}
-  #superior{flex:1;display:flex;gap:6px;padding:6px;min-height:0}
-  #map{flex:2.4;border-radius:8px}
-  #colDerecha{width:40%;display:flex;flex-direction:column;gap:6px}
-  #colDerecha .caja:nth-child(1){flex:1}
-  #colDerecha .caja:nth-child(2){flex:1.5}
-  .caja{background:#000;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;min-height:0}
-  .caja img{max-width:100%;max-height:90%;object-fit:contain}
-  #video{width:100%;height:90%;object-fit:cover}
-  #pantalla{width:100%;height:94%;object-fit:contain}
-  .caja div{padding:4px;font-size:14px}
-  #tarjetas{display:flex;justify-content:space-around;padding:8px;background:#1b1b1b;flex-wrap:wrap;gap:8px}
-  .tarjeta{background:#242424;border-radius:8px;padding:8px 18px;text-align:center;min-width:130px}
-  .titulo{font-size:11px;color:#ccc;letter-spacing:1px}
-  .valor{font-size:16px;font-weight:bold;color:#2196f3;margin-top:2px}
-  .ok{color:#00ff6a;font-weight:bold} .sin{color:#ff4d4d;font-weight:bold}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title> MotoFantasma Web · Ultra Fluid</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ═══ HEADER ══ */
+        #header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(17, 17, 17, 0.98);
+            border-bottom: 1px solid #333;
+            font-size: 13px;
+            z-index: 100;
+            flex-shrink: 0;
+            backdrop-filter: blur(4px);
+        }
+        #header input {
+            background: #222; border: 1px solid #444; color: #fff;
+            padding: 4px 8px; border-radius: 4px; width: 140px; font-family: monospace;
+        }
+        #estado {
+            flex: 1; text-align: right; color: #4caf50; font-weight: bold;
+        }
+        .btn-header {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .btn-rec { background: #c62828; color: white; }
+        .btn-rec.recording {
+            background: #ff1744;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse { 50% { opacity: 0.6; } }
+
+        /* ═══ VISOR CON DOBLE BUFFER ═══ */
+        #visor-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        #visor-container img {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            cursor: crosshair;
+            touch-action: none;
+            transition: opacity 0.05s linear;
+        }
+        .frame-active {
+            opacity: 1;
+            z-index: 10;
+        }
+        .frame-inactive {
+            opacity: 0;
+            z-index: 5;
+        }
+
+        /* Efecto visual al tocar */
+        .touch-dot {
+            position: absolute;
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255, 50, 50, 0.9);
+            background: rgba(255, 50, 50, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            animation: fadeOut 0.5s forwards;
+            z-index: 50;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+        }
+
+        /* ═══ PANEL DE BOTONES ══ */
+        #panel {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            background: rgba(17, 17, 17, 0.98);
+            border-top: 1px solid #333;
+            backdrop-filter: blur(4px);
+            flex-shrink: 0;
+        }
+        .btn {
+            flex: 1;
+            padding: 14px 0;
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .btn:active { background: #444; transform: scale(0.96); }
+        .btn-wake { background: #1a3a1a; border-color: #2e7d32; }
+        .btn-e { background: #1a2a3a; border-color: #1565c0; }
+        .btn-a { background: #3a1a1a; border-color: #c62828; }
+        .btn-l { background: #3a2a1a; border-color: #ef6c00; }
+
+        @media (orientation: landscape) {
+            #panel { display: none; }
+        }
+
+        /* ═══ PANEL DE GRABACIONES ═══ */
+        #recordings-panel {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(0, 0, 0, 0.95);
+            border-top: 2px solid #444;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            z-index: 200;
+            display: none;
+        }
+        #recordings-panel.visible { display: block; }
+        .rec-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: #111;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .rec-item a { color: #4caf50; text-decoration: none; font-weight: bold; }
+        .rec-item a:hover { text-decoration: underline; }
+    </style>
 </head>
 <body>
-<h2>● MONITOR EN VIVO: GPS + CÁMARA + PANTALLA</h2>
 
-<div id="superior">
-  <div id="map"></div>
-  <div id="colDerecha">
-    <div class="caja">
-      <img id="video" alt="Sin señal de cámara">
-      <div id="estadoCam" class="sin">Esperando cámara...</div>
+    <div id="header">
+        <span>🏍 ID:</span>
+        <input type="text" id="deviceId" value="9654cc6912e5223d">
+        <button class="btn-header btn-rec" id="btnRec" onclick="toggleRecording()">⏺ GRABAR</button>
+        <button class="btn-header" onclick="toggleRecordingsList()">📁 Grabaciones</button>
+        <span id="estado">Conectando...</span>
     </div>
-    <div class="caja">
-      <img id="pantalla" alt="Sin señal de pantalla">
-      <div id="estadoPan" class="sin">Esperando pantalla...</div>
+
+    <div id="visor-container">
+        <img id="pantalla1" class="frame-active" src="" alt="Esperando señal...">
+        <img id="pantalla2" class="frame-inactive" src="" alt="Esperando señal...">
     </div>
-  </div>
-</div>
 
-<div id="tarjetas">
-  <div class="tarjeta"><div class="titulo">LATITUD</div><div class="valor" id="txtLat">-</div></div>
-  <div class="tarjeta"><div class="titulo">LONGITUD</div><div class="valor" id="txtLng">-</div></div>
-  <div class="tarjeta"><div class="titulo">VELOCIDAD</div><div class="valor" id="txtVel">-</div></div>
-  <div class="tarjeta"><div class="titulo">ALTITUD</div><div class="valor" id="txtAlt">-</div></div>
-  <div class="tarjeta"><div class="titulo">ÚLTIMA SEÑAL</div><div class="valor" id="txtHora">-</div></div>
-</div>
+    <div id="panel">
+        <button class="btn btn-wake" onclick="enviarCmd('WAKE')">️ WAKE</button>
+        <button class="btn btn-e" onclick="enviarCmd('E')">🔑 E</button>
+        <button class="btn btn-a" onclick="enviarCmd('A')">🛑 A</button>
+        <button class="btn btn-l" onclick="enviarCmd('L')">🚨 L</button>
+    </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-const BASE = "https://gpspro-54204-default-rtdb.firebaseio.com/";
-const $ = id => document.getElementById(id);
+    <div id="recordings-panel">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <b style="color:#4caf50;">📹 Grabaciones en la nube:</b>
+            <button onclick="toggleRecordingsList()" style="background:none;border:none;color:#fff;cursor:pointer;">✕ Cerrar</button>
+        </div>
+        <div id="recordings-list">Cargando...</div>
+    </div>
 
-const map = L.map('map').setView([3.4849,-76.5075],16);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-let marker=null, line=null, pts=[], lastTs=null;
+    <script>
+        firebase.initializeApp({
+            databaseURL: "https://gpspro-54204-default-rtdb.firebaseio.com"
+        });
+        const storage = firebase.storage();
+        const db = firebase.database();
+        const BASE = "monitor/";
 
-async function poll(){
-  try{
-    const d = await (await fetch(BASE+"location.json",{cache:"no-store"})).json();
-    if(d && d.lat!=null){
-      const lat=+d.lat, lng=+d.lng;
-      if(!marker) marker=L.marker([lat,lng]).addTo(map).bindPopup("Dispositivo");
-      else marker.setLatLng([lat,lng]);
-      if(d.timestamp!==lastTs){ lastTs=d.timestamp; pts.push([lat,lng]);
-        if(!line) line=L.polyline(pts,{color:'#00ff6a',weight:3}).addTo(map); else line.setLatLngs(pts); }
-      map.setView([lat,lng],Math.max(map.getZoom(),17));
-      $('txtLat').textContent=lat.toFixed(6);
-      $('txtLng').textContent=lng.toFixed(6);
-      $('txtVel').textContent=((+(d.velocidad??0))*3.6).toFixed(1)+" km/h";
-      $('txtAlt').textContent=(+(d.altitud??0)).toFixed(0)+" m";
-      $('txtHora').textContent=new Date(+d.timestamp).toLocaleTimeString();
-    }
-  }catch(e){}
-  try{
-    const c = await (await fetch(BASE+"camera.json",{cache:"no-store"})).json();
-    if(c && c.img){
-      $('video').src="data:image/jpeg;base64,"+c.img;
-      $('estadoCam').textContent="Cámara: "+new Date(+c.ts).toLocaleTimeString();
-      $('estadoCam').className="ok";
-    }
-  }catch(e){}
-  try{
-    const p = await (await fetch(BASE+"screen.json",{cache:"no-store"})).json();
-    if(p && p.img){
-      $('pantalla').src="data:image/jpeg;base64,"+p.img;
-      $('estadoPan').textContent="Pantalla: "+new Date(+p.ts).toLocaleTimeString();
-      $('estadoPan').className="ok";
-    }
-  }catch(e){}
-}
-poll();
-setInterval(poll, 700);
-</script>
+        let currentId = document.getElementById('deviceId').value;
+        const img1 = document.getElementById('pantalla1');
+        const img2 = document.getElementById('pantalla2');
+        const container = document.getElementById('visor-container');
+        const lblEstado = document.getElementById('estado');
+        const btnRec = document.getElementById('btnRec');
+
+        let activeImg = 1;
+        let currentFrameImg = img1;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let animationFrameId = null;
+
+        function suscribirse(id) {
+            currentId = id;
+            lblEstado.textContent = "🔄 Buscando señal...";
+            
+            db.ref(BASE + "pantalla/" + currentId).on("value", (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.b64) {
+                    const lag = Math.round((Date.now() - data.ts) / 1000);
+                    lblEstado.textContent = `🏍 e13 en vivo · hace ${lag}s`;
+
+                    const nextImg = activeImg === 1 ? img2 : img1;
+                    const oldImg = activeImg === 1 ? img1 : img2;
+
+                    nextImg.src = "data:image/jpeg;base64," + data.b64;
+
+                    nextImg.onload = () => {
+                        nextImg.classList.remove('frame-inactive');
+                        nextImg.classList.add('frame-active');
+                        oldImg.classList.remove('frame-active');
+                        oldImg.classList.add('frame-inactive');
+                        
+                        activeImg = activeImg === 1 ? 2 : 1;
+                        currentFrameImg = nextImg;
+                    };
+                } else {
+                    lblEstado.textContent = "❌ e13 sin transmitir";
+                }
+            });
+
+            db.ref(BASE + "estado/" + currentId).on("value", (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.bat !== undefined) {
+                    lblEstado.textContent += ` · 🔋 ${data.bat}%`;
+                }
+            });
+        }
+
+        document.getElementById('deviceId').addEventListener('change', (e) => {
+            db.ref(BASE + "pantalla/" + currentId).off();
+            db.ref(BASE + "estado/" + currentId).off();
+            suscribirse(e.target.value.trim());
+        });
+
+        suscribirse(currentId);
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = currentFrameImg.naturalWidth || 640;
+                    canvas.height = currentFrameImg.naturalHeight || 480;
+                    const ctx = canvas.getContext('2d', { alpha: false });
+
+                    const updateCanvas = () => {
+                        if (!isRecording) return;
+                        ctx.drawImage(currentFrameImg, 0, 0, canvas.width, canvas.height);
+                        animationFrameId = requestAnimationFrame(updateCanvas);
+                    };
+                    updateCanvas();
+
+                    const stream = canvas.captureStream(30);
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'video/webm;codecs=vp9',
+                        videoBitsPerSecond: 2500000
+                    });
+
+                    recordedChunks = [];
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) recordedChunks.push(e.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        cancelAnimationFrame(animationFrameId);
+                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                        await uploadRecording(blob);
+                        mediaRecorder = null;
+                    };
+
+                    mediaRecorder.start(1000);
+                    isRecording = true;
+                    btnRec.textContent = "⏹ DETENER";
+                    btnRec.classList.add('recording');
+                    lblEstado.textContent = "🔴 GRABANDO...";
+                    
+                } catch (err) {
+                    alert("Error al iniciar grabación: " + err.message);
+                    console.error(err);
+                }
+            } else {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+                isRecording = false;
+                btnRec.textContent = "⏺ GRABAR";
+                btnRec.classList.remove('recording');
+                lblEstado.textContent = "💾 Subiendo grabación...";
+            }
+        }
+
+        async function uploadRecording(blob) {
+            const fileName = `${currentId}_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+            const storageRef = storage.ref(`grabaciones_moto/${fileName}`);
+            
+            try {
+                await storageRef.put(blob);
+                lblEstado.textContent = "✅ Grabación subida";
+                loadRecordings();
+            } catch (err) {
+                console.error("Error subiendo:", err);
+                lblEstado.textContent = "❌ Error al subir";
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fileName; a.click();
+            }
+        }
+
+        function loadRecordings() {
+            const listDiv = document.getElementById('recordings-list');
+            listDiv.textContent = "Cargando...";
+            
+            storage.ref('grabaciones_moto').listAll().then((result) => {
+                if (result.items.length === 0) {
+                    listDiv.textContent = "Sin grabaciones";
+                    return;
+                }
+                listDiv.innerHTML = '';
+                result.items.slice(-10).reverse().forEach(async (item) => {
+                    const url = await item.getDownloadURL();
+                    const meta = await item.getMetadata();
+                    const sizeMB = (meta.size / 1048576).toFixed(1);
+                    
+                    const div = document.createElement('div');
+                    div.className = 'rec-item';
+                    div.innerHTML = `<span>📹 ${item.name} (${sizeMB} MB)</span>
+                                     <a href="${url}" target="_blank" download>⬇ Descargar</a>`;
+                    listDiv.appendChild(div);
+                });
+            }).catch(err => {
+                listDiv.textContent = "Error: " + err.message;
+            });
+        }
+
+        function toggleRecordingsList() {
+            const panel = document.getElementById('recordings-panel');
+            panel.classList.toggle('visible');
+            if (panel.classList.contains('visible')) loadRecordings();
+        }
+
+        function enviarToque(clientX, clientY) {
+            const rect = currentFrameImg.getBoundingClientRect();
+            if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+
+            const nx = (clientX - rect.left) / rect.width;
+            const ny = (clientY - rect.top) / rect.height;
+
+            db.ref(BASE + "toque/" + currentId).set({
+                nx: parseFloat(nx.toFixed(4)),
+                ny: parseFloat(ny.toFixed(4)),
+                ts: Date.now()
+            });
+            mostrarEfectoToque(clientX, clientY);
+        }
+
+        container.addEventListener('click', (e) => enviarToque(e.clientX, e.clientY));
+        container.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            enviarToque(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        }, { passive: false });
+
+        function mostrarEfectoToque(x, y) {
+            const dot = document.createElement('div');
+            dot.className = 'touch-dot';
+            dot.style.left = x + 'px';
+            dot.style.top = y + 'px';
+            container.appendChild(dot);
+            setTimeout(() => dot.remove(), 500);
+        }
+
+        function enviarCmd(accion) {
+            db.ref(BASE + "cmd/" + currentId).set({ accion, ts: Date.now() });
+            lblEstado.textContent = `⚡ Enviando: ${accion}...`;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') toggleRecording();
+        });
+    </script>
 </body>
 </html>
